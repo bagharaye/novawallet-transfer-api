@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using NovaWallet.Tests.Fixtures;
 using NovaWallet.Tests.Helpers;
 using Xunit;
@@ -71,6 +72,35 @@ public sealed class FunctionalTests(NovaWalletApiFactory factory) : IClassFixtur
         var response = await _client.PostAsJsonAsync($"/wallets/{wallet.Id}/credit", new { });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Credit_SyntacticallyInvalidJson_Returns400WithErrorBody()
+    {
+        // Regression test for bug-reports/03: genuinely malformed JSON (not just a
+        // wrong-typed field) used to be rejected with an empty 400 body by ASP.NET
+        // Core's own model binder, bypassing the API's error contract entirely.
+        var wallet = await _client.CreateWalletAsync();
+        var content = new StringContent("{amountKobo: 100", Encoding.UTF8, "application/json");
+
+        var response = await _client.PostAsync($"/wallets/{wallet.Id}/credit", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var error = await response.ReadErrorAsync();
+        Assert.Equal("validation_error", error!.Error);
+    }
+
+    [Fact]
+    public async Task Credit_EmptyBody_Returns400WithErrorBody()
+    {
+        var wallet = await _client.CreateWalletAsync();
+        var content = new StringContent(string.Empty, Encoding.UTF8, "application/json");
+
+        var response = await _client.PostAsync($"/wallets/{wallet.Id}/credit", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var error = await response.ReadErrorAsync();
+        Assert.Equal("validation_error", error!.Error);
     }
 
     [Fact]

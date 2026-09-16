@@ -1,4 +1,3 @@
-using NovaWallet.Api.Errors;
 using NovaWallet.Api.Middleware;
 using NovaWallet.Api.Models;
 using NovaWallet.Api.Options;
@@ -38,26 +37,17 @@ app.MapGet("/wallets/{id}", (string id, TransferService transfers) =>
     return Results.Ok(new WalletResponse(wallet.Id, wallet.BalanceKobo, wallet.CreatedAt));
 });
 
-app.MapPost("/wallets/{id}/credit", async (string id, CreditRequest? request, TransferService transfers) =>
+app.MapPost("/wallets/{id}/credit", async (string id, HttpRequest httpRequest, TransferService transfers) =>
 {
-    if (request is null)
-    {
-        throw new ValidationException("Request body is required.");
-    }
+    var request = await RequestBodyReader.ReadAsync<CreditRequest>(httpRequest);
 
     var wallet = await transfers.CreditAsync(id, request.AmountKobo);
     return Results.Ok(new WalletResponse(wallet.Id, wallet.BalanceKobo, wallet.CreatedAt));
 });
 
-app.MapPost("/transfers", async (
-    TransferRequest? request,
-    TransferService transfers,
-    HttpRequest httpRequest) =>
+app.MapPost("/transfers", async (HttpRequest httpRequest, TransferService transfers) =>
 {
-    if (request is null)
-    {
-        throw new ValidationException("Request body is required.");
-    }
+    var request = await RequestBodyReader.ReadAsync<TransferRequest>(httpRequest);
 
     string? idempotencyKey = httpRequest.Headers.TryGetValue("Idempotency-Key", out var values)
         ? values.ToString()

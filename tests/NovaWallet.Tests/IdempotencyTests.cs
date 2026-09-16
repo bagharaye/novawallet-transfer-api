@@ -66,6 +66,31 @@ public sealed class IdempotencyTests(NovaWalletApiFactory factory) : IClassFixtu
     }
 
     [Fact]
+    public async Task FailedTransfer_IsNotCachedUnderTheKey_RetryCanSucceedOnceConditionIsResolved()
+    {
+        // Found during the exploratory session: a transfer that fails (here, insufficient
+        // funds) never actually mutates anything, so — unlike a successful transfer —
+        // there's no side effect for the idempotency key to protect against duplicating.
+        // The implementation deliberately does not cache a failure, so a client can retry
+        // the exact same key+payload after fixing the underlying condition (e.g. topping
+        // up the wallet) and have it succeed, rather than being permanently stuck replaying
+        // the original failure. See EXPLORATORY_TESTING_LOG.md.
+        var from = await _client.CreateFundedWalletAsync(500);
+        var to = await _client.CreateWalletAsync();
+        var key = $"idem-retry-{Guid.NewGuid():N}";
+
+        var firstAttempt = await _client.TransferRawAsync(from.Id, to.Id, 1_000, key);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, firstAttempt.StatusCode);
+
+        await _client.CreditWalletAsync(from.Id, 1_000); // resolve the condition
+
+        var retry = await _client.TransferRawAsync(from.Id, to.Id, 1_000, key);
+
+        Assert.Equal(HttpStatusCode.Created, retry.StatusCode);
+        Assert.Equal(1_000, (await _client.GetWalletAsync(to.Id)).BalanceKobo);
+    }
+
+    [Fact]
     public async Task NoIdempotencyKey_EachRequestIsProcessedAsANewTransfer()
     {
         // Documented assumption (TEST_STRATEGY.md §4): a transfer without an
