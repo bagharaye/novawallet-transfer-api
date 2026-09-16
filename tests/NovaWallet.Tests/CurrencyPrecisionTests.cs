@@ -92,6 +92,41 @@ public sealed class CurrencyPrecisionTests(NovaWalletApiFactory factory) : IClas
     }
 
     [Fact]
+    public async Task Credit_PushingBalancePastInt64Max_IsRejected_NotSilentlyWrapped()
+    {
+        // Regression test for a real bug found while building this suite: kobo is a
+        // plain C# `long`, and by default C# arithmetic is unchecked — an addition that
+        // overflows int64 doesn't throw, it silently wraps around to a large *negative*
+        // number. A wallet credited near long.MaxValue and then credited again used to
+        // come back 200 OK with a negative balance. See bug-reports/02.
+        var wallet = await _client.CreateWalletAsync();
+        await _client.CreditWalletAsync(wallet.Id, long.MaxValue - 500);
+
+        var response = await _client.CreditRawAsync(wallet.Id, new { amountKobo = 1_000 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var final = await _client.GetWalletAsync(wallet.Id);
+        Assert.True(final.BalanceKobo >= 0, $"Balance must never wrap to negative via overflow; was {final.BalanceKobo}.");
+        Assert.Equal(long.MaxValue - 500, final.BalanceKobo);
+    }
+
+    [Fact]
+    public async Task Transfer_PushingDestinationBalancePastInt64Max_IsRejected_SourceBalanceUnchanged()
+    {
+        var from = await _client.CreateFundedWalletAsync(10_000);
+        var to = await _client.CreateWalletAsync();
+        await _client.CreditWalletAsync(to.Id, long.MaxValue - 500);
+
+        var response = await _client.TransferRawAsync(from.Id, to.Id, 1_000);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        // Nothing must move if the credit side can't safely receive it — a partial
+        // debit-without-credit would make money vanish.
+        Assert.Equal(10_000, (await _client.GetWalletAsync(from.Id)).BalanceKobo);
+        Assert.Equal(long.MaxValue - 500, (await _client.GetWalletAsync(to.Id)).BalanceKobo);
+    }
+
+    [Fact]
     public async Task Transfer_OneKobo_ExactAmount_Succeeds()
     {
         var from = await _client.CreateFundedWalletAsync(1);

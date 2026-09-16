@@ -57,7 +57,19 @@ public sealed class TransferService(WalletStore store, IClock clock, IOptions<Ap
         await walletLock.WaitAsync();
         try
         {
-            wallet.BalanceKobo += amountKobo;
+            try
+            {
+                checked
+                {
+                    wallet.BalanceKobo += amountKobo;
+                }
+            }
+            catch (OverflowException)
+            {
+                throw new ValidationException(
+                    $"Crediting {amountKobo} kobo would overflow wallet '{walletId}' balance.");
+            }
+
             return wallet;
         }
         finally
@@ -147,9 +159,19 @@ public sealed class TransferService(WalletStore store, IClock clock, IOptions<Ap
                     throw new DailyLimitExceededException(fromId, _options.DailyOutboundLimitKobo);
                 }
 
+                // Checked for overflow *before* mutating either wallet: applying the debit
+                // and credit as two separate checked statements would risk leaving the
+                // debit applied and the credit unapplied if only the second one overflowed
+                // — money debited from fromWallet but never credited to toWallet.
+                if (toWallet.BalanceKobo > long.MaxValue - amount)
+                {
+                    throw new ValidationException(
+                        $"Transferring {amount} kobo would overflow destination wallet '{toId}' balance.");
+                }
+
                 fromWallet.BalanceKobo -= amount;
-                fromWallet.DailyOutboundUsedKobo += amount;
                 toWallet.BalanceKobo += amount;
+                fromWallet.DailyOutboundUsedKobo += amount;
 
                 return new TransferResponse(
                     Id: Guid.NewGuid().ToString("N"),
