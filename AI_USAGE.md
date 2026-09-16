@@ -22,11 +22,15 @@ _(Section will be extended if additional tools — e.g. GitHub Copilot in-editor
 
 _(Further entries added below as Part A and Part B are built.)_
 
-### 2. TODO — scaffolding Part A's transfer/idempotency/limit logic
+### 2. Scaffolding Part A's wallet/transfer/idempotency/limit logic
 
-_To be filled in with the actual prompt used to generate the wallet/transfer domain logic, and what needed correcting (e.g., initial locking strategy, or an incorrect assumption about how the idempotency key should scope replay detection)._
+**Prompt:** *"Go"* (after the earlier planning turn had already agreed the plan: .NET 8 minimal API, in-memory store, per-wallet async locks for atomicity, an `IClock` abstraction so the WAT-reset rule is testable without sleeping until real midnight, and `Idempotency-Key` handled via a per-key lock + cached response).
 
-### 3. TODO — generating the automated test suite
+**What came back:** A working minimal API — `Program.cs`, `TransferService`, `WalletStore`, middleware for bearer auth and centralized error formatting — bound `amountKobo` directly to a C# `long?` on the request DTOs, on the reasonable-looking assumption that ASP.NET Core's model binder rejecting a non-integer JSON value (like `100.5`) was good enough. Manually smoke-testing it immediately after (`curl` with `"amountKobo": 100.5`) showed the rejection *worked* — no fractional amount was ever accepted — but the response was `400` with a completely empty body, because that particular kind of binding failure is handled inside ASP.NET Core's own request-delegate machinery, before the app's `ExceptionHandlingMiddleware` (or even the endpoint handler) ever runs. So a client gets no explanation, no `{"error", "message"}` — just a blank rejection. That's exactly the kind of thing that "looks right" in a happy-path check and is wrong for a payments API, where every rejection needs to be actionable by the calling client. See `bug-reports/01-malformed-amount-empty-error-body.md` for the full writeup.
+
+**Correction made:** Rewrote `amountKobo` binding to take a raw `System.Text.Json.JsonElement` and validate it explicitly (`AmountParsing.TryGetKobo`), so *every* rejection — missing field, wrong type, or fractional value — goes through the same `ValidationException` path and gets the same JSON error shape. This also made the precision check explicit and readable in one place instead of being an implicit side effect of a CLR type choice.
+
+### 3. Generating the automated test suite
 
 _To be filled in with the prompt used to generate the boundary/negative test cases, and the specific case (see below) where the generated tests needed correction for this domain._
 
