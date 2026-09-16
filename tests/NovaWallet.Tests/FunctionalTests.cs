@@ -13,6 +13,18 @@ public sealed class FunctionalTests(NovaWalletApiFactory factory) : IClassFixtur
     private readonly HttpClient _client = factory.CreateAuthenticatedClient();
 
     [Fact]
+    public async Task Health_RequiresNoToken_Returns200()
+    {
+        // Deployment platforms (Render, etc.) health-check without a bearer token;
+        // this must stay reachable without one, and must reveal no wallet data.
+        var unauthed = factory.CreateClient();
+
+        var response = await unauthed.GetAsync("/health");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
     public async Task CreateWallet_StartsAtZeroBalance()
     {
         var wallet = await _client.CreateWalletAsync();

@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: novawallet-transfer-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: Api__BearerToken
+        generateValue: true
+      - key: Api__DailyOutboundLimitKobo
+        value: "50000000"

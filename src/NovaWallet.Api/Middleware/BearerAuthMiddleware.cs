@@ -13,7 +13,7 @@ namespace NovaWallet.Api.Middleware;
 /// </summary>
 public sealed class BearerAuthMiddleware(RequestDelegate next, IOptions<ApiOptions> apiOptions)
 {
-    private static readonly string[] ExemptPathPrefixes = ["/swagger", "/openapi"];
+    private static readonly string[] ExemptPathPrefixes = ["/swagger", "/openapi", "/health"];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly string _expectedHeaderValue = $"Bearer {apiOptions.Value.BearerToken}";

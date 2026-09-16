@@ -24,6 +24,11 @@ if (app.Environment.IsDevelopment())
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseMiddleware<BearerAuthMiddleware>();
 
+// Unauthenticated on purpose: deployment platforms (Render, etc.) hit this without a
+// bearer token to decide whether the instance is alive. Reveals nothing about wallet
+// data, so exempting it from BearerAuthMiddleware doesn't weaken the API's security.
+app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+
 app.MapPost("/wallets", (TransferService transfers) =>
 {
     var wallet = transfers.CreateWallet();

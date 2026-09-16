@@ -9,6 +9,7 @@ src/NovaWallet.Api/         Part A — reference Transfer API (.NET 8 minimal AP
 tests/NovaWallet.Tests/     Part B — automated functional/boundary/negative/concurrency/idempotency/security suite (xUnit)
 load/                       Stretch goal — basic k6 load smoke test + findings note
 .github/workflows/ci.yml    Stretch goal — GitHub Actions: builds and runs the suite on every push
+Dockerfile, render.yaml     Deploy config for a free test deployment (see "Deploying" below)
 TEST_STRATEGY.md            Risk-based test strategy: what's tested, why, in what order, what's out of scope
 AI_USAGE.md                 How AI was used, concrete prompts, and where its suggestions were wrong for this domain
 EXPLORATORY_TESTING_LOG.md  Time-boxed (≤60 min) exploratory session log
@@ -50,11 +51,28 @@ curl -X POST http://localhost:5229/wallets -H "Authorization: Bearer novawallet-
 dotnet test
 ```
 
-Runs from the repo root — the solution file (`NovaWallet.sln`) references both `src/NovaWallet.Api` and `tests/NovaWallet.Tests`, so this one command restores, builds, and runs all 62 tests. No external services, no database, no manually-started server required — the test project boots the real app in-process via `WebApplicationFactory<Program>`. This is exactly what `.github/workflows/ci.yml` runs on every push.
+Runs from the repo root — the solution file (`NovaWallet.sln`) references both `src/NovaWallet.Api` and `tests/NovaWallet.Tests`, so this one command restores, builds, and runs all 64 tests. No external services, no database, no manually-started server required — the test project boots the real app in-process via `WebApplicationFactory<Program>`. This is exactly what `.github/workflows/ci.yml` runs on every push.
 
 ## Running the load smoke test (stretch goal)
 
 See `load/README.md` — requires [k6](https://k6.io) and a running instance of Part A.
+
+## Deploying (free, for testing — not production)
+
+The repo includes a `Dockerfile` and a Render.com Blueprint (`render.yaml`) so Part A can be reached at a public URL without any local setup:
+
+1. Fork or push this repo to your own GitHub account (Render deploys from a repo you own/can grant it access to).
+2. Go to [dashboard.render.com](https://dashboard.render.com) → **New** → **Blueprint**, connect the repo. Render reads `render.yaml` automatically and provisions a **free** web service — no credit card required.
+3. Render builds the `Dockerfile` and deploys. `Api__BearerToken` is auto-generated as a random secret at deploy time (see the service's **Environment** tab in the Render dashboard to read it back) rather than shipping the same `novawallet-dev-token` default publicly.
+4. Once live, hit `https://<your-service>.onrender.com/health` (no auth) to confirm it's up, then use the generated token for everything else:
+
+```bash
+curl -X POST https://<your-service>.onrender.com/wallets -H "Authorization: Bearer <token-from-render-dashboard>"
+```
+
+**Free-tier caveats, since this is for testing only:** the instance spins down after 15 minutes of inactivity (the first request after that takes ~30-50s to wake it back up), and — same as running it locally — the wallet store is in-memory, so every redeploy or spin-down/spin-up cycle wipes all data back to empty. That's expected for a test deployment of a reference implementation, not a bug.
+
+Verified locally: `dotnet publish` produces the same `NovaWallet.Api.dll` the Docker image runs, and running it with the exact container entrypoint (`ASPNETCORE_URLS` bound to a `$PORT`-style env var, `ASPNETCORE_ENVIRONMENT=Production`) serves `/health` unauthenticated and `/wallets` with the bearer token as expected. The Docker build itself wasn't run in this sandbox (no Docker daemon available here) — Render will run the actual `docker build` on deploy.
 
 ## Where to start reading
 
