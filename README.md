@@ -10,6 +10,7 @@ tests/NovaWallet.Tests/     Part B — automated functional/boundary/negative/co
 load/                       Stretch goal — basic k6 load smoke test + findings note
 .github/workflows/ci.yml    Stretch goal — GitHub Actions: builds and runs the suite on every push
 Dockerfile, render.yaml     Deploy config for a free test deployment (see "Deploying" below)
+postman/                    A ready-to-run Postman collection for manual/exploratory testing (see postman/README.md)
 TEST_STRATEGY.md            Risk-based test strategy: what's tested, why, in what order, what's out of scope
 AI_USAGE.md                 How AI was used, concrete prompts, and where its suggestions were wrong for this domain
 EXPLORATORY_TESTING_LOG.md  Time-boxed (≤60 min) exploratory session log
@@ -56,6 +57,10 @@ Runs from the repo root — the solution file (`NovaWallet.sln`) references both
 ## Running the load smoke test (stretch goal)
 
 See `load/README.md` — requires [k6](https://k6.io) and a running instance of Part A.
+
+## Testing it manually (Postman)
+
+Import `postman/NovaWallet.postman_collection.json` into Postman for a ready-to-run collection covering every endpoint, boundary/negative cases, idempotency, the daily limit, and auth — pre-wired with test assertions and defaulted to the deployed Render instance. See `postman/README.md` for setup and what's covered.
 
 ## Deploying (free, for testing — not production)
 

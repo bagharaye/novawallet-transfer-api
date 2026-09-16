@@ -1,0 +1,554 @@
+{
+  "info": {
+    "_postman_id": "8f2b6a1e-3c4d-4e5a-9b7f-1a2c3d4e5f60",
+    "name": "NovaWallet Transfer API",
+    "description": "Ready-to-run collection for the NovaWallet Transfer API — happy paths, boundary/negative cases, idempotency, daily limit, and auth. Set `baseUrl` and `token` in the collection variables (defaults point at the deployed Render test instance with the default dev token). Requests that need a wallet ID auto-save it from a prior response via a Tests script, so you can just hit 'Run' top to bottom, or fire individual requests in any order once the setup requests have run once.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://novawallet-transfer-api.onrender.com", "type": "string" },
+    { "key": "token", "value": "novawallet-dev-token", "type": "string" },
+    { "key": "walletA", "value": "", "type": "string" },
+    { "key": "walletB", "value": "", "type": "string" },
+    { "key": "idemKey1", "value": "", "type": "string" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": { "type": "text/javascript", "exec": [""] }
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Setup",
+      "item": [
+        {
+          "name": "Create Wallet A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('balance starts at 0', () => pm.expect(body.balanceKobo).to.eql(0));",
+                  "pm.collectionVariables.set('walletA', body.id);",
+                  "console.log('walletA =', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/wallets", "host": ["{{baseUrl}}"], "path": ["wallets"] },
+            "description": "Creates the wallet used as the transfer source in the rest of this collection."
+          }
+        },
+        {
+          "name": "Create Wallet B",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('walletB', body.id);",
+                  "console.log('walletB =', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/wallets", "host": ["{{baseUrl}}"], "path": ["wallets"] },
+            "description": "Creates the wallet used as the transfer destination in the rest of this collection."
+          }
+        },
+        {
+          "name": "Credit Wallet A (₦10,000)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.json();",
+                  "pm.test('balance is 1,000,000 kobo', () => pm.expect(body.balanceKobo).to.eql(1000000));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"amountKobo\": 1000000\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletA}}/credit",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{walletA}}", "credit"]
+            },
+            "description": "Deposits ₦10,000.00 (1,000,000 kobo) into Wallet A."
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Wallets",
+      "item": [
+        {
+          "name": "Get Wallet A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('balanceKobo is an integer', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(Number.isInteger(body.balanceKobo)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletA}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{walletA}}"]
+            }
+          }
+        },
+        {
+          "name": "Get Wallet - Not Found (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 Not Found', () => pm.response.to.have.status(404));",
+                  "pm.test('error code is wallet_not_found', () => {",
+                  "  pm.expect(pm.response.json().error).to.eql('wallet_not_found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/does-not-exist",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "does-not-exist"]
+            }
+          }
+        },
+        {
+          "name": "Credit - Negative Amount (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('400 Bad Request', () => pm.response.to.have.status(400));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"amountKobo\": -500\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletA}}/credit",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{walletA}}", "credit"]
+            }
+          }
+        },
+        {
+          "name": "Credit - Fractional Amount Rejected (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('rejected, not rounded/truncated', () => {",
+                  "  pm.expect(pm.response.json().error).to.eql('validation_error');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"amountKobo\": 100.5\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletA}}/credit",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{walletA}}", "credit"]
+            },
+            "description": "amountKobo must be a whole integer number of kobo — this proves a fractional amount is rejected outright, not silently rounded/truncated."
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Transfers",
+      "item": [
+        {
+          "name": "Transfer A -> B (happy path)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const uuid = pm.variables.replaceIn('{{$guid}}');",
+                  "pm.collectionVariables.set('idemKey1', uuid);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const body = pm.response.json();",
+                  "pm.test('amountKobo echoed back exactly', () => pm.expect(body.amountKobo).to.eql(50000));",
+                  "pm.collectionVariables.set('transferId1', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idemKey1}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromWalletId\": \"{{walletA}}\",\n  \"toWalletId\": \"{{walletB}}\",\n  \"amountKobo\": 50000\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] },
+            "description": "Moves ₦500.00 (50,000 kobo) from Wallet A to Wallet B. The Idempotency-Key is generated once in the Pre-request Script and stored in {{idemKey1}} so the next two requests can reuse the exact same key."
+          }
+        },
+        {
+          "name": "Replay Same Key + Same Payload (idempotent)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 Created (replayed)', () => pm.response.to.have.status(201));",
+                  "pm.test('same transfer id as the original', () => {",
+                  "  pm.expect(pm.response.json().id).to.eql(pm.collectionVariables.get('transferId1'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idemKey1}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromWalletId\": \"{{walletA}}\",\n  \"toWalletId\": \"{{walletB}}\",\n  \"amountKobo\": 50000\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] },
+            "description": "Identical key + identical payload as the previous request. Must return the exact same transfer — and must NOT debit Wallet A a second time (check Get Wallet A afterwards)."
+          }
+        },
+        {
+          "name": "Replay Same Key + Different Payload (409 Conflict)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 Conflict', () => pm.response.to.have.status(409));",
+                  "pm.test('error code is idempotency_key_conflict', () => {",
+                  "  pm.expect(pm.response.json().error).to.eql('idempotency_key_conflict');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Idempotency-Key", "value": "{{idemKey1}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromWalletId\": \"{{walletA}}\",\n  \"toWalletId\": \"{{walletB}}\",\n  \"amountKobo\": 99999\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] },
+            "description": "Same Idempotency-Key as before, but a different amount. Must be rejected — the original transfer must not be touched or duplicated."
+          }
+        },
+        {
+          "name": "Transfer - Same Wallet Both Sides (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('400 Bad Request', () => pm.response.to.have.status(400));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromWalletId\": \"{{walletA}}\",\n  \"toWalletId\": \"{{walletA}}\",\n  \"amountKobo\": 1000\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] }
+          }
+        },
+        {
+          "name": "Transfer - Insufficient Funds (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 Unprocessable Entity', () => pm.response.to.have.status(422));",
+                  "pm.test('error code is insufficient_funds', () => {",
+                  "  pm.expect(pm.response.json().error).to.eql('insufficient_funds');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromWalletId\": \"{{walletA}}\",\n  \"toWalletId\": \"{{walletB}}\",\n  \"amountKobo\": 999999999\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] },
+            "description": "Requests far more than Wallet A's balance."
+          }
+        },
+        {
+          "name": "Transfer - Fractional Amount Rejected (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('400 Bad Request', () => pm.response.to.have.status(400));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromWalletId\": \"{{walletA}}\",\n  \"toWalletId\": \"{{walletB}}\",\n  \"amountKobo\": 250.75\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] }
+          }
+        },
+        {
+          "name": "Transfer - Unknown Wallet (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('404 Not Found', () => pm.response.to.have.status(404));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromWalletId\": \"{{walletA}}\",\n  \"toWalletId\": \"does-not-exist\",\n  \"amountKobo\": 1000\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Daily Limit",
+      "item": [
+        {
+          "name": "Credit Wallet A Past The Daily Limit",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"amountKobo\": 60000000\n}" },
+            "url": {
+              "raw": "{{baseUrl}}/wallets/{{walletA}}/credit",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "{{walletA}}", "credit"]
+            },
+            "description": "Tops Wallet A up with ₦600,000 — comfortably more than the ₦500,000/day outbound limit — so the next request's rejection can only be the daily limit, not an insufficient-funds error."
+          }
+        },
+        {
+          "name": "Transfer Over The Daily Limit (422)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('422 Unprocessable Entity', () => pm.response.to.have.status(422));",
+                  "pm.test('error code is daily_limit_exceeded', () => {",
+                  "  pm.expect(pm.response.json().error).to.eql('daily_limit_exceeded');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fromWalletId\": \"{{walletA}}\",\n  \"toWalletId\": \"{{walletB}}\",\n  \"amountKobo\": 50000001\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/transfers", "host": ["{{baseUrl}}"], "path": ["transfers"] },
+            "description": "Default daily outbound limit is ₦500,000 = 50,000,000 kobo. This requests one kobo more than that in a single transfer."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Security",
+      "item": [
+        {
+          "name": "Create Wallet - No Token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/wallets", "host": ["{{baseUrl}}"], "path": ["wallets"] }
+          }
+        },
+        {
+          "name": "Create Wallet - Wrong Token (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "not-the-real-token", "type": "string" }]
+            },
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/wallets", "host": ["{{baseUrl}}"], "path": ["wallets"] }
+          }
+        },
+        {
+          "name": "Get Wallet - SQL-Injection-Like Id (404, not 500)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 Not Found, no server error', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/wallets/'%20OR%20'1'='1",
+              "host": ["{{baseUrl}}"],
+              "path": ["wallets", "'%20OR%20'1'='1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Health",
+      "item": [
+        {
+          "name": "Health Check (no auth required)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          }
+        }
+      ]
+    }
+  ]
+}
