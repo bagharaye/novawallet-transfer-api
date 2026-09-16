@@ -82,6 +82,36 @@ public sealed class ConcurrencyTests(NovaWalletApiFactory factory, ITestOutputHe
     }
 
     [Fact]
+    public async Task ConcurrentTransfers_EachUnderDailyLimitButCollectivelyOverIt_NeverExceedTheLimit()
+    {
+        // Each individual request comfortably fits under the daily limit on its own; the
+        // question is whether the check-then-accumulate step is safe under real
+        // concurrency (a TOCTOU race), the same way the balance check needs to be.
+        const int concurrentRequests = 40;
+        const long perTransferKobo = 2_000_000; // 40 x 2,000,000 = 80,000,000 > the 50,000,000 daily limit
+        const int expectedSuccesses = (int)(NovaWalletApiFactory.DailyOutboundLimitKobo / perTransferKobo);
+
+        var from = await _client.CreateFundedWalletAsync(1_000_000_000); // balance is never the limiting factor here
+        var to = await _client.CreateWalletAsync();
+
+        var tasks = Enumerable.Range(0, concurrentRequests)
+            .Select(_ => _client.TransferRawAsync(from.Id, to.Id, perTransferKobo))
+            .ToArray();
+        var responses = await Task.WhenAll(tasks);
+
+        var succeeded = responses.Count(r => r.StatusCode == HttpStatusCode.Created);
+        var finalTo = await _client.GetWalletAsync(to.Id);
+
+        var evidence = $"succeeded={succeeded} expected={expectedSuccesses} finalToBalance={finalTo.BalanceKobo} " +
+                        $"dailyLimit={NovaWalletApiFactory.DailyOutboundLimitKobo}";
+        output.WriteLine(evidence);
+
+        Assert.True(finalTo.BalanceKobo <= NovaWalletApiFactory.DailyOutboundLimitKobo,
+            $"Cumulative outbound transfers exceeded the daily limit under concurrency. {evidence}");
+        Assert.True(succeeded == expectedSuccesses, $"Wrong number of transfers succeeded under limit contention. {evidence}");
+    }
+
+    [Fact]
     public async Task ConcurrentReplay_SameIdempotencyKey_ProcessedExactlyOnce()
     {
         const int concurrentRequests = 30;
